@@ -15,10 +15,8 @@ import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.onTextMessage
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.clients.openrouter.OpenRouterLLMClient
-import ai.koog.prompt.executor.clients.openrouter.OpenRouterModels
-import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
-import ai.koog.prompt.llm.LLMProvider
+import ai.koog.prompt.executor.model.PromptExecutor
+import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
 import ai.koog.utils.time.KoogClock
 import kotlin.time.ExperimentalTime
@@ -26,14 +24,19 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * AgentExecutor A2A qui crée un AIAgent Koog avec graph strategy.
+ * AgentExecutor A2A pour l'agent HelloAgent.
  *
- * Supporte message/send (synchrone) et message/stream (SSE).
- * Utilise TaskStatusUpdateEvent avec final=true/false pour le streaming.
+ * Responsabilité : pont entre le protocole A2A et un AIAgent Koog.
+ * - Crée un AIAgent par requête (stateful, single-run)
+ * - Définit la graph strategy (setup → LLM → réponse)
+ * - Gère le lifecycle A2A (createTask → updateTaskStatus)
+ *
+ * L'infrastructure LLM (promptExecutor, model) est injectée depuis l'extérieur.
  */
 @OptIn(ExperimentalUuidApi::class)
 class HelloAgentExecutor(
-    private val apiKey: String
+    private val promptExecutor: PromptExecutor,
+    private val model: LLModel,
 ) : AgentExecutor {
 
     override suspend fun execute(
@@ -49,9 +52,7 @@ class HelloAgentExecutor(
         context: RequestContext<MessageSendParams>,
         eventProcessor: SessionEventProcessor,
     ) = AIAgent(
-        promptExecutor = MultiLLMPromptExecutor(
-            LLMProvider.OpenRouter to OpenRouterLLMClient(apiKey)
-        ),
+        promptExecutor = promptExecutor,
         toolRegistry = ToolRegistry.EMPTY,
         strategy = strategy<A2AMessage, Unit>("hello-agent") {
 
@@ -64,7 +65,7 @@ class HelloAgentExecutor(
                     }
                 }
 
-                // Créer la task dans le storage (premier event = Task, pas TaskStatusUpdateEvent)
+                // Créer la task dans le storage (premier event = Task)
                 withA2AAgentServer {
                     createTask(inputMessage, TaskState.Submitted)
                 }
@@ -99,7 +100,7 @@ class HelloAgentExecutor(
                     exposé via le protocole A2A (Agent-to-Agent) et propulsé par Koog.
                 """.trimIndent())
             },
-            model = OpenRouterModels.GPT4o,
+            model = model,
             maxAgentIterations = 5
         ),
     ) {
@@ -110,13 +111,16 @@ class HelloAgentExecutor(
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Extensions A2A — helpers pour le lifecycle des tasks
+// ══════════════════════════════════════════════════════════════════════════════
+
 /**
  * Crée une nouvelle task dans le storage A2A.
- * Doit être appelée AVANT tout TaskStatusUpdateEvent.
- * Pattern calqué sur JokeWriterAgentExecutor.createTask.
+ * Doit être appelée AVANT tout [TaskStatusUpdateEvent].
  */
 @OptIn(ExperimentalUuidApi::class, ExperimentalTime::class)
-private suspend fun A2AAgentServer.createTask(
+internal suspend fun A2AAgentServer.createTask(
     userMessage: A2AMessage,
     state: TaskState,
 ) {
@@ -138,7 +142,7 @@ private suspend fun A2AAgentServer.createTask(
  * - final=true  → event terminal, le stream se ferme (Completed, Failed)
  */
 @OptIn(ExperimentalUuidApi::class, ExperimentalTime::class)
-private suspend fun A2AAgentServer.updateTaskStatus(
+internal suspend fun A2AAgentServer.updateTaskStatus(
     content: String,
     state: TaskState,
     final: Boolean,

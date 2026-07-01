@@ -1,41 +1,49 @@
 package com.a2ui.demo
 
-// ── Protocole A2A ──
-import ai.koog.a2a.server.A2AServer
-import ai.koog.a2a.model.AgentCard
 import ai.koog.a2a.model.AgentCapabilities
+import ai.koog.a2a.model.AgentCard
 import ai.koog.a2a.model.AgentSkill
 import ai.koog.a2a.model.TransportProtocol
-
-// ── Transport ──
+import ai.koog.a2a.server.A2AServer
 import ai.koog.a2a.transport.server.jsonrpc.http.HttpJSONRPCServerTransport
-
-// ── Ktor ──
+import ai.koog.prompt.executor.clients.openrouter.OpenRouterLLMClient
+import ai.koog.prompt.executor.clients.openrouter.OpenRouterModels
+import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
+import ai.koog.prompt.llm.LLMProvider
+import com.a2ui.demo.agent.HelloAgentExecutor
 import io.ktor.server.netty.Netty
 
-// ── Agent ──
-import com.a2ui.demo.agent.HelloAgentExecutor
-
 /**
- * Point d'entrée — Démarre un serveur A2A.
+ * Point d'entrée — Démarre le serveur A2A.
  *
- * Code calqué sur la doc officielle :
- * val server = A2AServer(agentExecutor = ..., agentCard = ...)
- * val transport = HttpJSONRPCServerTransport(server)
- * transport.start(engineFactory = Netty, port = ..., path = ..., wait = true)
+ * Responsabilités (infrastructure + wiring) :
+ * - Configuration (clés API, port, model)
+ * - Création du PromptExecutor partagé
+ * - Définition de l'AgentCard (identité A2A)
+ * - Instanciation de l'AgentExecutor avec ses dépendances
+ * - Wiring A2AServer + Transport
  */
 suspend fun main() {
-    // 1. Clé API OpenRouter
+    // ── Configuration ──
     val apiKey = System.getenv("OPENROUTER_API_KEY")
         ?: System.getenv("LLM_API_KEY")
         ?: System.getenv("OPENAI_API_KEY")
         ?: error("OPENROUTER_API_KEY non définie.")
 
-    // 2. AgentCard — exactement comme la doc officielle
+    val port = 9998
+    val path = "/hello"
+    val model = OpenRouterModels.GPT4o
+
+    // ── Infrastructure LLM (singleton partagé) ──
+    val promptExecutor = MultiLLMPromptExecutor(
+        LLMProvider.OpenRouter to OpenRouterLLMClient(apiKey)
+    )
+
+    // ── AgentCard — identité et capacités de l'agent ──
     val agentCard = AgentCard(
         name = "HelloAgent",
-        url = "http://localhost:9998/hello",
-        description = "Un agent IA simple propulsé par Koog et OpenRouter, exposé via le protocole A2A.",
+        url = "http://localhost:$port$path",
+        description = "Un agent IA conversationnel propulsé par Koog, exposé via le protocole A2A.",
         version = "0.1.0",
         protocolVersion = "0.3.0",
         preferredTransport = TransportProtocol.JSONRPC,
@@ -52,25 +60,22 @@ suspend fun main() {
         )
     )
 
-    // 3. AgentExecutor — OpenRouter natif
-    val agentExecutor = HelloAgentExecutor(apiKey)
+    // ── Agent — executor avec ses dépendances injectées ──
+    val agentExecutor = HelloAgentExecutor(promptExecutor, model)
 
-    // 4. A2AServer — exactly as documented
+    // ── A2AServer + Transport ──
     val server = A2AServer(agentExecutor = agentExecutor, agentCard = agentCard)
-
-    // 5. Transport — exactly as documented
     val transport = HttpJSONRPCServerTransport(server)
 
     println("🤖 A2A Agent Server starting...")
-    println("📋 Agent Card: http://localhost:9998/.well-known/agent-card.json")
-    println("🔗 Agent endpoint: http://localhost:9998/hello")
+    println("📋 Agent Card: http://localhost:$port/.well-known/agent-card.json")
+    println("🔗 Agent endpoint: http://localhost:$port$path")
     println("---")
 
-    // 6. Start — exactly as documented (no agentCard here)
     transport.start(
         engineFactory = Netty,
-        port = 9998,
-        path = "/hello",
+        port = port,
+        path = path,
         wait = true
     )
 }
