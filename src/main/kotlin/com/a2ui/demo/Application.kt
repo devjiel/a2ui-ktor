@@ -7,43 +7,50 @@ import ai.koog.a2a.model.TransportProtocol
 import ai.koog.a2a.server.A2AServer
 import ai.koog.a2a.transport.server.jsonrpc.http.HttpJSONRPCServerTransport
 import ai.koog.prompt.executor.clients.openrouter.OpenRouterLLMClient
-import ai.koog.prompt.executor.clients.openrouter.OpenRouterModels
 import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.llm.LLMProvider
-import com.a2ui.demo.agent.HelloAgentExecutor
+import ai.koog.prompt.llm.LLModel
+import com.a2ui.demo.agent.generator.A2UIGeneratorAgentExecutor
+import com.a2ui.demo.agent.intent.IntentAgentExecutor
 import io.ktor.server.netty.Netty
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /**
- * Point d'entrée — Démarre le serveur A2A.
+ * Point d'entrée — Démarre deux serveurs A2A dans le même process.
  *
- * Responsabilités (infrastructure + wiring) :
- * - Configuration (clés API, port, model)
- * - Création du PromptExecutor partagé
- * - Définition de l'AgentCard (identité A2A)
- * - Instanciation de l'AgentExecutor avec ses dépendances
- * - Wiring A2AServer + Transport
+ * - IntentAgent (/intent) — point d'entrée public, port 9998
+ * - A2UIGeneratorAgent (/generator) — agent interne, port 9999
  */
-suspend fun main() {
+suspend fun main(): Unit = coroutineScope {
     // ── Configuration ──
     val apiKey = System.getenv("OPENROUTER_API_KEY")
         ?: System.getenv("LLM_API_KEY")
         ?: System.getenv("OPENAI_API_KEY")
         ?: error("OPENROUTER_API_KEY non définie.")
 
-    val port = 9998
-    val path = "/hello"
-    val model = OpenRouterModels.GPT4o
+    val intentPort = 9998
+    val generatorPort = 9999
+    val intentPath = "/intent"
+    val generatorPath = "/generator"
+
+    // Modèles LLM (configurables par env vars)
+    val intentModelName = System.getenv("INTENT_MODEL") ?: "google/gemini-2.5-flash"
+    val generatorModelName = System.getenv("GENERATOR_MODEL") ?: "google/gemini-2.5-pro"
+
+    val intentModel = LLModel(LLMProvider.OpenRouter, intentModelName)
+    val generatorModel = LLModel(LLMProvider.OpenRouter, generatorModelName)
 
     // ── Infrastructure LLM (singleton partagé) ──
     val promptExecutor = MultiLLMPromptExecutor(
         LLMProvider.OpenRouter to OpenRouterLLMClient(apiKey)
     )
 
-    // ── AgentCard — identité et capacités de l'agent ──
-    val agentCard = AgentCard(
-        name = "HelloAgent",
-        url = "http://localhost:$port$path",
-        description = "Un agent IA conversationnel propulsé par Koog, exposé via le protocole A2A.",
+    // ── 1. A2UIGeneratorAgent (interne, port 9999) ──
+    val generatorCard = AgentCard(
+        name = "A2UIGeneratorAgent",
+        url = "http://localhost:$generatorPort$generatorPath",
+        description = "Agent spécialisé dans la génération d'interfaces A2UI v0.9 à partir d'intentions structurées.",
         version = "0.1.0",
         protocolVersion = "0.3.0",
         preferredTransport = TransportProtocol.JSONRPC,
@@ -52,30 +59,68 @@ suspend fun main() {
         defaultOutputModes = listOf("text"),
         skills = listOf(
             AgentSkill(
-                id = "general_chat",
-                name = "Conversation générale",
-                description = "Répond aux questions et assiste l'utilisateur en français.",
-                tags = listOf("chat", "assistant", "french")
+                id = "a2ui_generation",
+                name = "Génération A2UI",
+                description = "Génère des messages A2UI valides (createSurface, updateComponents, updateDataModel) à partir d'une intention.",
+                tags = listOf("a2ui", "ui-generation", "json")
             )
         )
     )
 
-    // ── Agent — executor avec ses dépendances injectées ──
-    val agentExecutor = HelloAgentExecutor(promptExecutor, model)
+    val generatorExecutor = A2UIGeneratorAgentExecutor(promptExecutor, generatorModel)
+    val generatorServer = A2AServer(agentExecutor = generatorExecutor, agentCard = generatorCard)
+    val generatorTransport = HttpJSONRPCServerTransport(generatorServer)
 
-    // ── A2AServer + Transport ──
-    val server = A2AServer(agentExecutor = agentExecutor, agentCard = agentCard)
-    val transport = HttpJSONRPCServerTransport(server)
+    // ── 2. IntentAgent (public, port 9998) ──
+    val intentCard = AgentCard(
+        name = "IntentAgent",
+        url = "http://localhost:$intentPort$intentPath",
+        description = "Agent d'analyse d'intention pour la génération d'interfaces A2UI. Point d'entrée du système multi-agent.",
+        version = "0.1.0",
+        protocolVersion = "0.3.0",
+        preferredTransport = TransportProtocol.JSONRPC,
+        capabilities = AgentCapabilities(streaming = true),
+        defaultInputModes = listOf("text"),
+        defaultOutputModes = listOf("text"),
+        skills = listOf(
+            AgentSkill(
+                id = "intent_analysis",
+                name = "Analyse d'intention A2UI",
+                description = "Analyse les demandes utilisateur et génère des interfaces A2UI riches via un agent spécialisé.",
+                tags = listOf("intent", "a2ui", "multi-agent")
+            )
+        )
+    )
 
-    println("🤖 A2A Agent Server starting...")
-    println("📋 Agent Card: http://localhost:$port/.well-known/agent-card.json")
-    println("🔗 Agent endpoint: http://localhost:$port$path")
+    val generatorUrl = "http://localhost:$generatorPort$generatorPath"
+    val intentExecutor = IntentAgentExecutor(promptExecutor, intentModel, generatorUrl)
+    val intentServer = A2AServer(agentExecutor = intentExecutor, agentCard = intentCard)
+    val intentTransport = HttpJSONRPCServerTransport(intentServer)
+
+    // ── Démarrage ──
+    println("🤖 A2UI Multi-Agent System starting...")
+    println("📋 Intent Agent Card: http://localhost:$intentPort/.well-known/agent-card.json")
+    println("🔗 Intent Agent endpoint: http://localhost:$intentPort$intentPath")
+    println("📋 Generator Agent Card: http://localhost:$generatorPort/.well-known/agent-card.json")
+    println("🔗 Generator Agent endpoint: http://localhost:$generatorPort$generatorPath")
     println("---")
 
-    transport.start(
-        engineFactory = Netty,
-        port = port,
-        path = path,
-        wait = true
-    )
+    // Lancer les deux serveurs en parallèle
+    launch {
+        generatorTransport.start(
+            engineFactory = Netty,
+            port = generatorPort,
+            path = generatorPath,
+            wait = true
+        )
+    }
+
+    launch {
+        intentTransport.start(
+            engineFactory = Netty,
+            port = intentPort,
+            path = intentPath,
+            wait = true
+        )
+    }
 }

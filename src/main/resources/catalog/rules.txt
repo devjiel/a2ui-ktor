@@ -1,0 +1,44 @@
+**REQUIRED PROPERTIES:** You MUST include ALL required properties for every component, even if they are inside a template or will be bound to data.
+- For 'Text', you MUST provide 'text'. If dynamic, use { "path": "..." }.
+- For 'Image', you MUST provide 'url'. If dynamic, use { "path": "..." }.
+- For 'Button', you MUST provide 'action' AND 'child' (a ComponentId referencing a Text component).
+- For 'TextField', 'CheckBox', etc., you MUST provide 'label'.
+
+**STRUCTURAL RULES:**
+- Components MUST be a flat adjacency list. NEVER nest components inline.
+- Card takes "child" (singular, one ComponentId). Wrap multiple children in a Column or Row first.
+- Button "child" is a ComponentId (typically a Text component ID), NOT inline text.
+- Component IDs MUST be unique within a surface.
+- "weight" property may ONLY be set on direct children of Row or Column.
+- One component MUST have id="root" to serve as the component tree root.
+
+**MESSAGE ORDERING:**
+- Always start with createSurface, then updateComponents, then updateDataModel (if needed).
+- If ANY component uses data binding ({"path": "..."}), you SHOULD send an updateDataModel to initialize the referenced paths.
+- Set sendDataModel: true in createSurface when the UI is interactive AND the agent needs to receive the full data model state with every user message (enables "verbal submit" and stateless agent operation).
+
+**DATA MODEL:**
+- updateDataModel initializes the paths referenced by components via {"path": "..."}.
+- Use JSON Pointer paths (RFC 6901): /user/name, /items/0, etc.
+- If no components use data binding, do NOT send updateDataModel.
+
+**ACTIONS:**
+- Action is EITHER {"event": {...}} OR {"functionCall": {...}}, NEVER both.
+
+- EVENT actions (dispatched to the agent):
+  {"event": {"name": "action_name", "context": {...}}}
+  - "name" is a stable identifier for the agent to recognize the action.
+  - "context" values can be:
+    - LITERAL values: "Paris", 42, true
+    - DATA BINDINGS: {"path": "/reservation/guests"} — resolved by the renderer at click time
+  - Always include "context" (can be empty {}).
+
+- FUNCTIONCALL actions (executed locally on the renderer):
+  {"functionCall": {"name": "openUrl", "arguments": {"url": "..."}}}
+  - "name" is a pre-registered function in the catalog (openUrl, etc.).
+  - "arguments" are the function parameters.
+  - NO arbitrary code injection — only catalog-defined functions.
+
+**JSON FORMAT:**
+- "version" MUST be "v0.9" in every message.
+- "children" is either an array of strings (component IDs) OR an object {"componentId": "...", "path": "/..."}.

@@ -1,39 +1,45 @@
-# A2UI Ktor — Agent Koog + A2A
+# A2UI Ktor — Multi-Agent A2UI Generation
 
 ## Architecture
 
 ```
-HTTP :9998
-  ↓
-HttpJSONRPCServerTransport (transport)
-  ↓
-A2AServer (protocole a2a-server, transitif)
-  ↓
-HelloAgentExecutor (implémente AgentExecutor de a2a-server)
-  ↓
-AIAgent Koog (graph strategy)
-  ├── install(A2AAgentServer) ← feature de agents-features-a2a-server
-  ├── nodeSetup → envoie TaskState.Submitted via withA2AAgentServer
-  ├── nodeLLMRequest → appelle OpenAI GPT-4o
-  └── nodeProcessAssistant → envoie TaskState.Completed via withA2AAgentServer
+HTTP :9998 (public)                       HTTP :9999 (interne)
+  ↓                                         ↓
+HttpJSONRPCServerTransport                HttpJSONRPCServerTransport
+  ↓                                         ↓
+A2AServer (IntentAgent)                   A2AServer (A2UIGeneratorAgent)
+  ↓                                         ↓
+IntentAgentExecutor                       A2UIGeneratorAgentExecutor
+  ↓                                         ↓
+AIAgent (graph strategy)                  AIAgent (graph strategy)
+├── nodeSetup                             ├── nodeSetup
+├── nodeLLMRequest (gemini-flash)         ├── nodeLLMRequest (gemini-2.5-pro)
+│   ├── tool: validate_intent             │   ├── tool: validate_a2ui (12 règles)
+│   └── tool-calling loop                 │   └── tool-calling loop (Generator-Critic)
+├── nodeForwardToGenerator                └── nodeProcessResponse → Completed
+│   └── A2A Client → port 9999
+└── nodeFinish
 ```
 
 ## Fichiers
 
-- `Application.kt` — AgentCard, A2AServer, HttpJSONRPCServerTransport
-- `agent/HelloAgentExecutor.kt` — AgentExecutor + AIAgent graph strategy
+### Agents
+- `agent/A2AHelpers.kt` — Helpers A2A partagés (createTask, updateTaskStatus)
+- `agent/intent/IntentAgentExecutor.kt` — Point d'entrée A2A, analyse d'intention
+- `agent/intent/IntentResult.kt` — Data class intention (userMessage, intent, justification, uiType)
+- `agent/intent/IntentValidationTool.kt` — Validation déterministe de l'intention (5 règles)
+- `agent/generator/A2UIGeneratorAgentExecutor.kt` — Génération A2UI (graph Generator-Critic)
+- `agent/generator/A2UIValidationTool.kt` — Validation déterministe A2UI (12 règles)
 
-## Dépendances
-
-| Module Maven | Rôle |
-|--------|------|
-| `koog-agents` | Framework agent Koog |
-| `koog-agents-features-a2a-server` | Bridge AIAgent ↔ A2A (tire `a2a-server` en transitif) |
-| `koog-a2a-transport-server-jsonrpc-http` | Transport HTTP JSON-RPC |
-| `ktor-server-netty` | Moteur HTTP |
+### Ressources
+- `resources/catalog/catalog.json` — Catalogue A2UI complet (18 composants, 14 fonctions)
+- `resources/catalog/rules.txt` — Règles de validation enrichies
+- `resources/catalog/a2ui_spec_summary.txt` — Résumé de la spec A2UI v0.9
+- `resources/catalog/examples.json` — 5 exemples few-shot
 
 ## Commandes
 
 - `./gradlew build` — compiler
-- `OPENAI_API_KEY=... ./gradlew run` — lancer
-- `curl http://localhost:9998/.well-known/agent-card.json` — découverte
+- `OPENROUTER_API_KEY=... ./gradlew run` — lancer les deux agents
+- `curl http://localhost:9998/.well-known/agent-card.json` — découverte IntentAgent
+- `curl http://localhost:9999/.well-known/agent-card.json` — découverte GeneratorAgent

@@ -1,0 +1,116 @@
+A2UI SPECIFICATION SUMMARY (v0.9)
+=================================
+
+A2UI (Agent-to-User Interface) is a protocol for agents to create rich, interactive UIs.
+
+## MESSAGE PROTOCOL
+
+All messages use JSONL (one JSON object per line). Each message has "version": "v0.9".
+Four message types exist:
+
+1. createSurface — Initialize a new UI surface
+   Required: surfaceId (string), catalogId (string)
+   Optional: sendDataModel (boolean, default false), theme
+   - sendDataModel: true → the client will send the full data model of this surface
+     in the metadata of EVERY message sent back to the server (via A2A transport metadata).
+     This enables "verbal submit": the user can say "OK reserve" and the agent receives
+     the text AND the full UI state, without needing a button click.
+
+2. updateComponents — Define/update the component tree
+   Required: surfaceId (string), components (array)
+   - components is a FLAT ADJACENCY LIST (never nested)
+   - Each component has: id (string, unique), component (string, must be in catalog)
+   - Components reference each other by ID via child/children/trigger/content
+   - One component MUST have id="root" (the tree root)
+
+3. updateDataModel — Set/update application state
+   Required: surfaceId (string)
+   Optional: path (JSON Pointer RFC 6901), value (any)
+   - If path omitted or "/": replaces entire data model
+   - If path exists with value: updates (upsert) at that path
+   - If path exists without value: deletes at that path
+
+4. deleteSurface — Remove a surface
+   Required: surfaceId (string)
+
+## TYPICAL FLOW
+createSurface → updateComponents → updateDataModel (if data binding used)
+
+## COMPONENT REFERENCING
+- "child": "component-id" — single child (Card, Button, Modal trigger/content)
+- "children": ["id1", "id2"] — static list of children (Row, Column, List)
+- "children": {"componentId": "template-id", "path": "/data/list"} — dynamic template
+
+## DATA BINDING
+- Components bind to data model via {"path": "/json/pointer"}
+- DynamicString: can be literal "hello" OR {"path": "/user/name"}
+- DynamicNumber: can be literal 42 OR {"path": "/item/price"}
+- DynamicBoolean: can be literal true OR {"path": "/user/active"}
+- Two-way binding: TextField value bound via path updates data model when user types
+
+## ACTIONS
+
+### Event (dispatched to the agent for processing)
+The agent defines an event action on a component. When the user interacts, the renderer
+resolves any data bindings in the context and sends the resolved values to the agent.
+
+Agent definition (in updateComponents):
+{
+  "action": {
+    "event": {
+      "name": "book_table",
+      "context": {
+        "nb_guests": {"path": "/reservation/guests"},
+        "time": {"path": "/reservation/time"},
+        "location": "Paris"
+      }
+    }
+  }
+}
+
+- "name": stable identifier the agent uses to know which action was triggered
+- "context": dictionary where values can be LITERAL constants OR {"path": "/..."} data bindings
+- The renderer resolves paths at click time and sends resolved values to the agent
+
+### FunctionCall (executed locally on the renderer, no network round-trip)
+{
+  "action": {
+    "functionCall": {
+      "name": "openUrl",
+      "arguments": {
+        "url": "https://docs.a2ui.org"
+      }
+    }
+  }
+}
+
+- "name": pre-registered function in the catalog (e.g., openUrl)
+- "arguments": parameters for the function
+- Security: agents CANNOT inject arbitrary code; only catalog-defined functions are allowed
+
+### "Verbal Submit" (sendDataModel: true)
+When sendDataModel is true, the user can simply send a text message like "OK reserve"
+and the client automatically attaches the full data model as metadata:
+{
+  "message": "OK reserve",
+  "metadata": {
+    "a2uiClientDataModel": {
+      "surfaces": {
+        "surface_id": { ...full data model state... }
+      }
+    }
+  }
+}
+
+## STRUCTURAL RULES
+- Components are ALWAYS a flat list (adjacency model), NEVER nested inline
+- Card takes "child" (singular ComponentId), NOT "children"
+- Button takes "child" (singular ComponentId, typically a Text), NOT inline text
+- "weight" property may ONLY be set when component is direct child of Row or Column
+- Component IDs must be unique within a surface
+- All components must be defined in the catalog
+
+## CATALOG COMPONENTS (18 types)
+Display: Text, Image, Icon, Video, AudioPlayer
+Layout: Row, Column, List, Card, Tabs, Modal, Divider
+Interactive: Button, TextField, CheckBox, ChoicePicker, Slider, DateTimeInput
