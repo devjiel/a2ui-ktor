@@ -89,8 +89,16 @@ class A2UIGeneratorAgentExecutor(
 
                 // ── Node final : envoyer la réponse A2UI ──
                 val nodeProcessResponse by node<String, Unit> { response ->
+                    // Strip markdown code fences si le LLM en ajoute malgré le prompt
+                    val cleanedResponse = response
+                        .trim()
+                        .removePrefix("```json")
+                        .removePrefix("```")
+                        .removeSuffix("```")
+                        .trim()
+
                     withA2AAgentServer {
-                        updateTaskStatus(response, TaskState.Completed, final = true)
+                        updateTaskStatus(cleanedResponse, TaskState.Completed, final = true)
                     }
                 }
 

@@ -7,6 +7,7 @@ import ai.koog.a2a.model.TransportProtocol
 import ai.koog.a2a.server.A2AServer
 import ai.koog.a2a.transport.server.jsonrpc.http.HttpJSONRPCServerTransport
 import ai.koog.prompt.executor.clients.openrouter.OpenRouterLLMClient
+import ai.koog.prompt.executor.clients.openrouter.OpenRouterModels
 import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
@@ -34,12 +35,9 @@ suspend fun main(): Unit = coroutineScope {
     val intentPath = "/intent"
     val generatorPath = "/generator"
 
-    // Modèles LLM (configurables par env vars)
-    val intentModelName = System.getenv("INTENT_MODEL") ?: "google/gemini-2.5-flash"
-    val generatorModelName = System.getenv("GENERATOR_MODEL") ?: "google/gemini-2.5-pro"
-
-    val intentModel = LLModel(LLMProvider.OpenRouter, intentModelName)
-    val generatorModel = LLModel(LLMProvider.OpenRouter, generatorModelName)
+    // Modèles LLM — utiliser les constantes Koog pour avoir les capabilities correctes
+    val intentModel = OpenRouterModels.Gemini2_5Flash
+    val generatorModel = OpenRouterModels.Gemini2_5Pro
 
     // ── Infrastructure LLM (singleton partagé) ──
     val promptExecutor = MultiLLMPromptExecutor(
