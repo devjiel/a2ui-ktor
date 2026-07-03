@@ -1,32 +1,56 @@
-# A2UI Ktor — Agent IA Koog avec A2A
+# A2UI Ktor — Multi-Agent A2UI Generation + Flutter GenUI Frontend
 
-Agent IA propulsé par [Koog](https://koog.ai) (JetBrains) exposé via le protocole [A2A](https://a2aprotocol.org) (Agent-to-Agent).
+Monorepo contenant un système multi-agent A2UI avec un backend Kotlin/Ktor (Koog) et un frontend Flutter (GenUI SDK).
 
-## Prérequis
+## Architecture
 
-- JDK 21+
-- Variable d'environnement `OPENAI_API_KEY`
-
-## Lancer
-
-```bash
-OPENAI_API_KEY=sk-your-key ./gradlew run
+```
+a2ui-ktor/
+├── backend/     ← Agents Koog/Ktor (IntentAgent + GeneratorAgent)
+└── frontend/    ← Application Flutter avec GenUI SDK
 ```
 
-Serveur A2A sur `http://localhost:9998`.
+### Backend — Agents A2A
 
-## Tester
-
-```bash
-# Découverte de l'agent
-curl http://localhost:9998/.well-known/agent-card.json
-
-# Interrogation via JSON-RPC
-curl -X POST http://localhost:9998/hello \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"message/send","params":{"message":{"messageId":"1","role":"user","parts":[{"kind":"text","text":"Bonjour !"}]}},"id":"1"}'
+```
+HTTP :9998 (public)                       HTTP :9999 (interne)
+  ↓                                         ↓
+IntentAgent                               A2UIGeneratorAgent
+  ↓ analyse l'intention                     ↓ génère l'A2UI JSON
+  └── délègue au GeneratorAgent ──────────→ └── retourne DataPart(application/a2ui+json)
 ```
 
-## Stack
+### Frontend — Flutter GenUI
 
-Kotlin 2.2 · Koog 1.0 · A2A 0.3.0 · OpenAI GPT-4o · Ktor Netty
+```
+User Input → Conversation → A2uiAgentConnector → IntentAgent (port 9998)
+                                                        ↓
+GenUiSurface ← SurfaceController ← A2uiTransportAdapter ← DataPart(a2ui+json)
+```
+
+## Commandes
+
+### Backend
+```bash
+cd backend
+./gradlew build                                  # Compiler
+OPENROUTER_API_KEY=... ./gradlew run             # Lancer les deux agents
+curl http://localhost:9998/.well-known/agent-card.json  # Agent Card IntentAgent
+```
+
+### Frontend
+```bash
+cd frontend
+flutter pub get        # Installer les dépendances
+flutter run -d chrome  # Lancer sur Chrome
+flutter run -d iPhone  # Lancer sur le simulateur iOS
+```
+
+## Stack Technique
+
+| Composant | Technologie |
+|-----------|-------------|
+| Backend | Kotlin 2.2, Ktor 3.1, Koog 1.0 |
+| Frontend | Flutter 3.41+, Dart 3.11+ |
+| Protocole | A2A (JSON-RPC HTTP), A2UI v0.9 |
+| GenUI SDK | genui 0.9, genui_a2a 0.9 |
