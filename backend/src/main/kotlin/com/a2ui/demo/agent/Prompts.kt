@@ -1,6 +1,48 @@
 package com.a2ui.demo.agent
+
 import com.a2ui.demo.agent.intent.IntentResult
 import com.a2ui.demo.agent.intent.UiType
+
+/** Template de prompt pour les continuations (clic bouton A2UI). Placeholders: eventName, context, dataModel, userText */
+const val CONTINUATION_PROMPT_TEMPLATE = """
+## ACTION DE CONTINUATION
+
+L'utilisateur a interagi avec l'interface A2UI que tu as générée précédemment.
+
+### Event déclenché
+Nom: %s
+
+### Contexte résolu (valeurs des champs au moment du clic)
+%s
+
+### État complet du Data Model client
+%s
+
+### Message textuel de l'utilisateur
+%s
+
+### Instructions
+1. Identifie l'étape du workflow à partir du nom de l'event
+2. Utilise les données du contexte résolu ET/OU du data model pour appeler les outils métier appropriés
+3. Génère la NOUVELLE interface A2UI pour l'étape suivante du workflow
+4. Le résultat doit être un set complet de messages A2UI (createSurface + updateComponents + updateDataModel si nécessaire)
+5. Valide TOUJOURS via validate_a2ui avant de retourner le JSON
+"""
+
+fun continuationPrompt(eventName: String, context: String, dataModel: String, userText: String): String =
+    CONTINUATION_PROMPT_TEMPLATE.format(eventName, context, dataModel, userText).trim()
+
+/** Template de prompt pour un message initial (intention analysée). Placeholders: intentJson, dataModel */
+const val INITIAL_PROMPT_TEMPLATE = """
+Génère une interface A2UI pour l'intention suivante:
+%s
+
+### État du Data Model client
+%s
+"""
+
+fun initialPrompt(intentJson: String, dataModel: String): String =
+    INITIAL_PROMPT_TEMPLATE.format(intentJson, dataModel).trim()
 
 const val INTENT_AGENT_SYSTEM_PROMPT = """
 Tu es un agent d'analyse d'intention pour la génération d'interfaces A2UI.

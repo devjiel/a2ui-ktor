@@ -70,7 +70,12 @@ class IntentAgentExecutor(
             "Traitement de l'action '${eventInfo.name}'...",
             TaskState.Working, final = false,
         )
-        val prompt = buildContinuationPrompt(eventInfo, clientDataModel, extractUserText(userMessage))
+        val prompt = continuationPrompt(
+            eventName = eventInfo.name,
+            context = eventInfo.context?.toString().orEmpty(),
+            dataModel = clientDataModel?.toString().orEmpty(),
+            userText = extractUserText(userMessage),
+        )
         forwardToGenerator(prompt, context, eventProcessor)
     }
 
@@ -105,7 +110,10 @@ class IntentAgentExecutor(
             return
         }
 
-        val prompt = buildInitialPrompt(Json.encodeToString(intentResult.data), clientDataModel)
+        val prompt = initialPrompt(
+            intentJson = Json.encodeToString(intentResult.data),
+            dataModel = clientDataModel?.toString().orEmpty(),
+        )
         forwardToGenerator(prompt, context, eventProcessor)
     }
 
@@ -211,62 +219,6 @@ class IntentAgentExecutor(
     private fun extractClientDataModel(context: RequestContext<MessageSendParams>): JsonObject? =
         context.params.metadata?.get("a2uiClientDataModel") as? JsonObject
             ?: context.params.message.metadata?.get("a2uiClientDataModel") as? JsonObject
-
-    // ── Prompt building ─────────────────────────────────────────────
-
-    /**
-     * Construit le prompt pour une continuation (action de bouton A2UI).
-     *
-     * Le prompt inclut le contexte résolu et le data model complet, permettant
-     * au Generator de fonctionner en mode stateless sans mémoire serveur.
-     */
-    private fun buildContinuationPrompt(
-        action: A2UIActionInfo,
-        clientDataModel: JsonObject?,
-        userText: String,
-    ): String = buildString {
-        appendLine("## ACTION DE CONTINUATION")
-        appendLine()
-        appendLine("L'utilisateur a interagi avec l'interface A2UI que tu as générée précédemment.")
-        appendLine()
-        appendLine("### Event déclenché")
-        appendLine("Nom: ${action.name}")
-        action.context?.let { ctx ->
-            appendLine("Contexte résolu (valeurs des champs au moment du clic):")
-            appendLine(ctx.toString())
-        }
-        appendLine()
-        clientDataModel?.let { dm ->
-            appendLine("### État complet du Data Model client (a2uiClientDataModel)")
-            appendLine("Ceci est l'état complet de tous les widgets de la surface au moment de l'interaction:")
-            appendLine(dm.toString())
-            appendLine()
-        }
-        if (userText.isNotBlank() && userText != action.rawData.toString()) {
-            appendLine("### Message textuel de l'utilisateur")
-            appendLine(userText)
-            appendLine()
-        }
-        appendLine("### Instructions")
-        appendLine("1. Identifie l'étape du workflow à partir du nom de l'event")
-        appendLine("2. Utilise les données du contexte résolu ET/OU du data model pour appeler les outils métier appropriés")
-        appendLine("3. Génère la NOUVELLE interface A2UI pour l'étape suivante du workflow")
-        appendLine("4. Le résultat doit être un set complet de messages A2UI (createSurface + updateComponents + updateDataModel si nécessaire)")
-        appendLine("5. Valide TOUJOURS via validate_a2ui avant de retourner le JSON")
-    }
-
-    /**
-     * Construit le prompt pour un message initial (intention analysée via structured output).
-     */
-    private fun buildInitialPrompt(intentJson: String, clientDataModel: JsonObject?): String = buildString {
-        appendLine("Génère une interface A2UI pour l'intention suivante:")
-        appendLine(intentJson)
-        clientDataModel?.let { dm ->
-            appendLine()
-            appendLine("### État du Data Model client")
-            appendLine(dm.toString())
-        }
-    }
 
     // ── Generator forwarding ────────────────────────────────────────
 
