@@ -3,16 +3,25 @@
 package com.a2ui.demo.agent
 
 import ai.koog.a2a.model.*
+import ai.koog.a2a.server.session.RequestContext
+import ai.koog.a2a.server.session.SessionEventProcessor
 import ai.koog.agents.a2a.core.A2AMessage
 import ai.koog.agents.a2a.server.feature.A2AAgentServer
 import ai.koog.utils.time.KoogClock
 import kotlin.uuid.Uuid
 
+// ──────────────────────────────────────────────────────────────
+// Core standalone functions (context + eventProcessor as params)
+// Usable anywhere — inside or outside an AIAgent.
+// ──────────────────────────────────────────────────────────────
+
 /**
  * Crée une nouvelle task dans le storage A2A.
  * Doit être appelée AVANT tout [TaskStatusUpdateEvent].
  */
-internal suspend fun A2AAgentServer.createTask(
+internal suspend fun sendTaskCreated(
+    context: RequestContext<MessageSendParams>,
+    eventProcessor: SessionEventProcessor,
     userMessage: A2AMessage,
     state: TaskState,
 ) {
@@ -33,7 +42,9 @@ internal suspend fun A2AAgentServer.createTask(
  * - final=false → event intermédiaire, le stream continue (Working)
  * - final=true  → event terminal, le stream se ferme (Completed, Failed)
  */
-internal suspend fun A2AAgentServer.updateTaskStatus(
+internal suspend fun sendStatusUpdate(
+    context: RequestContext<MessageSendParams>,
+    eventProcessor: SessionEventProcessor,
     content: String,
     state: TaskState,
     final: Boolean,
@@ -61,7 +72,9 @@ internal suspend fun A2AAgentServer.updateTaskStatus(
  * Met à jour le status d'une task avec des parts custom (ex: DataPart A2UI).
  * Utilisé pour transmettre des DataPart(application/a2ui+json) au client.
  */
-internal suspend fun A2AAgentServer.updateTaskStatusWithParts(
+internal suspend fun sendStatusUpdateWithParts(
+    context: RequestContext<MessageSendParams>,
+    eventProcessor: SessionEventProcessor,
     parts: List<Part>,
     state: TaskState,
     final: Boolean,
@@ -84,3 +97,28 @@ internal suspend fun A2AAgentServer.updateTaskStatusWithParts(
     )
     eventProcessor.sendTaskEvent(taskStatusUpdate)
 }
+
+// ──────────────────────────────────────────────────────────────
+// A2AAgentServer extensions (delegate to standalone functions)
+// For use inside AIAgent nodes via withA2AAgentServer { ... }
+// ──────────────────────────────────────────────────────────────
+
+/** @see sendTaskCreated */
+internal suspend fun A2AAgentServer.createTask(
+    userMessage: A2AMessage,
+    state: TaskState,
+) = sendTaskCreated(context, eventProcessor, userMessage, state)
+
+/** @see sendStatusUpdate */
+internal suspend fun A2AAgentServer.updateTaskStatus(
+    content: String,
+    state: TaskState,
+    final: Boolean,
+) = sendStatusUpdate(context, eventProcessor, content, state, final)
+
+/** @see sendStatusUpdateWithParts */
+internal suspend fun A2AAgentServer.updateTaskStatusWithParts(
+    parts: List<Part>,
+    state: TaskState,
+    final: Boolean,
+) = sendStatusUpdateWithParts(context, eventProcessor, parts, state, final)

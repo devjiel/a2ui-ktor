@@ -1,0 +1,12 @@
+# ──────────────────────────────────────────────
+# A2UI Multi-Agent System — Configuration
+# ──────────────────────────────────────────────
+# Surcharge via variables d'environnement : ${ENV_VAR:valeur_par_defaut}
+
+intent:
+  url: ${INTENT_URL:http://localhost:9998/intent}
+  model: ${INTENT_MODEL:google/gemini-2.5-flash}
+
+generator:
+  url: ${GENERATOR_URL:http://localhost:9999/generator}
+  model: ${GENERATOR_MODEL:google/gemini-2.5-pro}
