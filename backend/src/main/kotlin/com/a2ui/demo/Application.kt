@@ -10,7 +10,6 @@ import ai.koog.prompt.executor.clients.openrouter.OpenRouterLLMClient
 import ai.koog.prompt.executor.clients.openrouter.OpenRouterModels
 import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.llm.LLMProvider
-import ai.koog.prompt.llm.LLModel
 import com.a2ui.demo.agent.generator.A2UIGeneratorAgentExecutor
 import com.a2ui.demo.agent.intent.IntentAgentExecutor
 import io.ktor.http.*
@@ -21,8 +20,9 @@ import io.ktor.server.netty.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
 import java.net.URI
 
 /**
@@ -32,6 +32,8 @@ import java.net.URI
  * - A2UIGeneratorAgent (/generator) — agent interne, port 9999
  */
 suspend fun main(): Unit = coroutineScope {
+    val logger = LoggerFactory.getLogger("com.a2ui.demo.Application")
+
     // ── Configuration ──
     val config = ApplicationConfig("application.yaml")
 
@@ -48,9 +50,9 @@ suspend fun main(): Unit = coroutineScope {
 
     val generatorBaseUrl = "${generatorUri.scheme}://${generatorUri.host}:${generatorUri.port}"
 
-    // Modèles LLM — résolus depuis le YAML
-    val intentModel = resolveModel(config.property("intent.model").getString())
-    val generatorModel = resolveModel(config.property("generator.model").getString())
+    // Modèles LLM
+    val intentModel = OpenRouterModels.Gemini2_5Flash
+    val generatorModel = OpenRouterModels.Gemini2_5Pro
 
     // ── Infrastructure LLM (singleton partagé) ──
     val promptExecutor = MultiLLMPromptExecutor(
@@ -108,62 +110,49 @@ suspend fun main(): Unit = coroutineScope {
     val intentTransport = HttpJSONRPCServerTransport(intentServer)
 
     // ── Démarrage ──
-    println("🤖 A2UI Multi-Agent System starting...")
-    println("📋 Intent Agent Card: ${intentUri.scheme}://${intentUri.host}:${intentUri.port}/.well-known/agent-card.json")
-    println("🔗 Intent Agent endpoint: $intentUrl")
-    println("📋 Generator Agent Card: $generatorBaseUrl/.well-known/agent-card.json")
-    println("🔗 Generator Agent endpoint: $generatorUrl")
-    println("---")
+    logger.info("🤖 A2UI Multi-Agent System starting...")
+    logger.info("📋 Intent Agent Card: ${intentUri.scheme}://${intentUri.host}:${intentUri.port}/.well-known/agent-card.json")
+    logger.info("🔗 Intent Agent endpoint: $intentUrl")
+    logger.info("📋 Generator Agent Card: $generatorBaseUrl/.well-known/agent-card.json")
+    logger.info("🔗 Generator Agent endpoint: $generatorUrl")
+    logger.info("---")
 
     // ── Generator (interne — pas de CORS nécessaire)
-    launch {
-        generatorTransport.start(
-            engineFactory = Netty,
-            port = generatorUri.port,
-            path = generatorUri.path,
-            wait = true,
-            agentCard = generatorCard,
-        )
-    }
+    generatorTransport.start(
+        engineFactory = Netty,
+        port = generatorUri.port,
+        path = generatorUri.path,
+        wait = false,
+        agentCard = generatorCard,
+    )
 
     // ── Intent Agent (public — serveur Ktor custom avec CORS) ──
-    launch {
-        try {
-            embeddedServer(Netty, port = intentUri.port) {
-                // Installer CORS pour autoriser le frontend Flutter (web)
-                install(CORS) {
-                    anyHost()
-                    allowMethod(HttpMethod.Post)
-                    allowMethod(HttpMethod.Options)
-                    allowHeader(HttpHeaders.ContentType)
-                    allowHeader(HttpHeaders.Accept)
-                    allowHeader(HttpHeaders.Authorization)
-                    allowHeader("X-Requested-With")
-                    allowHeader("x-a2a-extensions")
-                    allowNonSimpleContentTypes = true
-                }
+    try {
+        embeddedServer(Netty, port = intentUri.port) {
+            // Installer CORS pour autoriser le frontend Flutter (web)
+            install(CORS) {
+                anyHost() // NOTE: À configurer avec le domaine frontend en production
+                allowMethod(HttpMethod.Post)
+                allowMethod(HttpMethod.Options)
+                allowHeader(HttpHeaders.ContentType)
+                allowHeader(HttpHeaders.Accept)
+                allowHeader(HttpHeaders.Authorization)
+                allowHeader("X-Requested-With")
+                allowHeader("x-a2a-extensions")
+                allowNonSimpleContentTypes = true
+            }
 
-                // SSE requis par transportRoutes()
-                install(SSE)
+            // SSE requis par transportRoutes()
+            install(SSE)
 
-                routing {
-                    intentTransport.transportRoutes(this, intentUri.path)
-                }
-            }.start(wait = true)
-        } catch (e: Exception) {
-            System.err.println("❌ ERREUR démarrage Intent Agent (port ${intentUri.port}): ${e.message}")
-            e.printStackTrace()
-        }
+            routing {
+                intentTransport.transportRoutes(this, intentUri.path)
+            }
+        }.start(wait = false)
+    } catch (e: Exception) {
+        logger.error("❌ ERREUR démarrage Intent Agent (port ${intentUri.port}): ${e.message}", e)
     }
-}
 
-/**
- * Résout un nom de modèle OpenRouter en [LLModel] avec les capabilities correctes.
- * Les constantes Koog embarquent les metadata (supports tools, structured output, etc.).
- */
-private fun resolveModel(modelName: String): LLModel = when (modelName) {
-    "google/gemini-2.5-flash" -> OpenRouterModels.Gemini2_5Flash
-    "google/gemini-2.5-flash-lite" -> OpenRouterModels.Gemini2_5FlashLite
-    "google/gemini-2.5-pro" -> OpenRouterModels.Gemini2_5Pro
-    else -> error("Modèle inconnu: '$modelName'. Modèles supportés: google/gemini-2.5-flash, google/gemini-2.5-flash-lite, google/gemini-2.5-pro")
+    // Garde le processus actif sans bloquer de thread
+    awaitCancellation()
 }

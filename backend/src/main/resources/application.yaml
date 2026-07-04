@@ -5,8 +5,6 @@
 
 intent:
   url: ${INTENT_URL:http://localhost:9998/intent}
-  model: ${INTENT_MODEL:google/gemini-2.5-flash}
 
 generator:
   url: ${GENERATOR_URL:http://localhost:9999/generator}
-  model: ${GENERATOR_MODEL:google/gemini-2.5-pro}
