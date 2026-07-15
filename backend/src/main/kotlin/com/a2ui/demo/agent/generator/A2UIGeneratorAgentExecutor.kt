@@ -31,7 +31,9 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import com.a2ui.demo.business.booking.tools.BookingTools
-import com.a2ui.demo.agent.A2UI_GENERATOR_SYSTEM_PROMPT_TEMPLATE
+import com.a2ui.demo.agent.buildGeneratorSystemPrompt
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * AgentExecutor A2A pour la génération A2UI.
@@ -50,13 +52,15 @@ class A2UIGeneratorAgentExecutor(
         context: RequestContext<MessageSendParams>,
         eventProcessor: SessionEventProcessor
     ) {
-        val agent = createAgent(context, eventProcessor)
+        val lang = context.params.metadata?.get("lang")?.jsonPrimitive?.contentOrNull ?: "en"
+        val agent = createAgent(context, eventProcessor, lang)
         agent.run(context.params.message)
     }
 
     private fun createAgent(
         context: RequestContext<MessageSendParams>,
         eventProcessor: SessionEventProcessor,
+        lang: String,
     ): AIAgent<A2AMessage, Unit> {
         // Charger les ressources pour le prompt
         val catalog = loadResource("/catalog/catalog.json")
@@ -86,7 +90,7 @@ class A2UIGeneratorAgentExecutor(
                     }
                     withA2AAgentServer {
                         createTask(inputMessage, TaskState.Submitted)
-                        updateTaskStatus("Génération de l'interface A2UI en cours...", TaskState.Working, final = false)
+                        updateTaskStatus("Generating A2UI interface...", TaskState.Working, final = false)
                     }
                     "" // Return empty string to match nodeLLMRequest input type
                 }
@@ -147,7 +151,7 @@ class A2UIGeneratorAgentExecutor(
             },
             agentConfig = AIAgentConfig(
                 prompt = prompt("a2ui-generator") {
-                    system(buildGeneratorSystemPrompt(specSummary, catalog, rules, examples))
+                    system(buildGeneratorSystemPrompt(specSummary, catalog, rules, examples, lang))
                 },
                 model = model,
                 maxAgentIterations = 15
@@ -165,19 +169,4 @@ class A2UIGeneratorAgentExecutor(
             ?: error("Resource '$path' non trouvée dans le classpath")
     }
 
-    companion object {
-        /**
-         * Construit le prompt système du Generator.
-         * IMPORTANT : le prompt dit explicitement au LLM de :
-         * 1. Toujours utiliser le tool validate_a2ui AVANT de retourner du texte
-         * 2. Ne JAMAIS retourner le JSON A2UI en texte AVANT validation
-         * 3. Faire une auto-critique sémantique APRÈS validation réussie
-         */
-        fun buildGeneratorSystemPrompt(
-            specSummary: String,
-            catalog: String,
-            rules: String,
-            examples: String
-        ): String = A2UI_GENERATOR_SYSTEM_PROMPT_TEMPLATE.format(specSummary, catalog, rules, examples).trimIndent()
-    }
 }

@@ -52,7 +52,7 @@ suspend fun main(): Unit = coroutineScope {
 
     // Modèles LLM
     val intentModel = OpenRouterModels.Gemini2_5Flash
-    val generatorModel = OpenRouterModels.Gemini2_5Pro
+    val generatorModel = OpenRouterModels.Gemini2_5Flash
 
     // ── Infrastructure LLM (singleton partagé) ──
     val promptExecutor = MultiLLMPromptExecutor(
@@ -63,7 +63,7 @@ suspend fun main(): Unit = coroutineScope {
     val generatorCard = AgentCard(
         name = "A2UIGeneratorAgent",
         url = generatorUrl,
-        description = "Agent spécialisé dans la génération d'interfaces A2UI v0.9 à partir d'intentions structurées.",
+        description = "Specialized agent for generating A2UI v0.9 interfaces from structured intents.",
         version = "0.1.0",
         protocolVersion = "0.3.0",
         preferredTransport = TransportProtocol.JSONRPC,
@@ -73,8 +73,8 @@ suspend fun main(): Unit = coroutineScope {
         skills = listOf(
             AgentSkill(
                 id = "a2ui_generation",
-                name = "Génération A2UI",
-                description = "Génère des messages A2UI valides (createSurface, updateComponents, updateDataModel) à partir d'une intention.",
+                name = "A2UI Generation",
+                description = "Generates valid A2UI messages (createSurface, updateComponents, updateDataModel) from an intent.",
                 tags = listOf("a2ui", "ui-generation", "json")
             )
         )
@@ -88,7 +88,7 @@ suspend fun main(): Unit = coroutineScope {
     val intentCard = AgentCard(
         name = "IntentAgent",
         url = intentUrl,
-        description = "Agent d'analyse d'intention pour la génération d'interfaces A2UI. Point d'entrée du système multi-agent.",
+        description = "Intent analysis agent for A2UI interface generation. Entry point of the multi-agent system.",
         version = "0.1.0",
         protocolVersion = "0.3.0",
         preferredTransport = TransportProtocol.JSONRPC,
@@ -98,8 +98,8 @@ suspend fun main(): Unit = coroutineScope {
         skills = listOf(
             AgentSkill(
                 id = "intent_analysis",
-                name = "Analyse d'intention A2UI",
-                description = "Analyse les demandes utilisateur et génère des interfaces A2UI riches via un agent spécialisé.",
+                name = "A2UI Intent Analysis",
+                description = "Analyzes user requests and generates rich A2UI interfaces via a specialized agent.",
                 tags = listOf("intent", "a2ui", "multi-agent")
             )
         )

@@ -31,6 +31,7 @@ class _BookingScreenState extends State<BookingScreen>
   bool _isLoading = false;
   bool _showHero = true;
   String? _errorMessage;
+  String _selectedLang = 'en';
 
   // Animations
   late final AnimationController _pulseController;
@@ -80,7 +81,7 @@ class _BookingScreenState extends State<BookingScreen>
       onError: (Object error) {
         debugPrint('🔴 A2UI stream error: $error');
         setState(() {
-          _errorMessage = 'Connexion perdue : $error';
+          _errorMessage = 'Connection lost: $error';
           _isLoading = false;
         });
       },
@@ -115,7 +116,7 @@ class _BookingScreenState extends State<BookingScreen>
     _connector.errorStream.listen((error) {
       debugPrint('❌ Agent error: $error');
       setState(() {
-        _errorMessage = 'Erreur agent : $error';
+        _errorMessage = 'Agent error: $error';
         _isLoading = false;
       });
     });
@@ -135,7 +136,7 @@ class _BookingScreenState extends State<BookingScreen>
     });
 
     final chatMessage = ChatMessage.user(
-      'Je veux réserver un vol spatial',
+      '[LANG:$_selectedLang]\nI want to book a space flight',
     );
     await _sendToAgent(chatMessage);
   }
@@ -157,7 +158,7 @@ class _BookingScreenState extends State<BookingScreen>
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Erreur de communication : $e';
+        _errorMessage = 'Communication error: $e';
       });
     }
   }
@@ -181,7 +182,14 @@ class _BookingScreenState extends State<BookingScreen>
 
           // Main content
           SafeArea(
-            child: _showHero ? _buildHeroPage() : _buildAgentView(),
+            child: _showHero
+                ? _buildHeroPage()
+                : Directionality(
+                    textDirection: _selectedLang == 'ar'
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    child: _buildAgentView(),
+                  ),
           ),
         ],
       ),
@@ -192,156 +200,199 @@ class _BookingScreenState extends State<BookingScreen>
   // Hero landing page
   // ─────────────────────────────────────────────
 
+  Widget _buildLanguageDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+        ),
+        color: const Color(0xFF0A0E21).withValues(alpha: 0.8),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedLang,
+          icon: const Icon(Icons.language, color: Color(0xFF00E5FF), size: 18),
+          dropdownColor: const Color(0xFF0A0E21),
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 13,
+            letterSpacing: 1,
+          ),
+          items: const [
+            DropdownMenuItem(value: 'en', child: Text('EN 🇬🇧')),
+            DropdownMenuItem(value: 'fr', child: Text('FR 🇫🇷')),
+            DropdownMenuItem(value: 'zh', child: Text('中文 🇨🇳')),
+            DropdownMenuItem(value: 'ar', child: Text('عربي 🇸🇦')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => _selectedLang = value);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeroPage() {
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Logo / icon
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF00E5FF), Color(0xFFBB86FC)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
-                      blurRadius: 30,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.rocket_launch_rounded,
-                  size: 40,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Title
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [Color(0xFF00E5FF), Color(0xFF64FFDA)],
-                ).createShader(bounds),
-                child: const Text(
-                  'STELLAR LINES',
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 8,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'INTERPLANETARY TRAVEL',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w300,
-                  letterSpacing: 6,
-                  color: Colors.white.withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(height: 48),
-
-              // Tagline
-              Text(
-                'Explorez les confins du système solaire.\nRéservez votre vol vers les étoiles.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.6,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
-              ),
-              const SizedBox(height: 56),
-
-              // CTA Button — animated glow
-              AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, child) {
-                  final glowIntensity =
-                      0.2 + (_pulseController.value * 0.3);
-                  return Container(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 16,
+            right: 16,
+            child: _buildLanguageDropdown(),
+          ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Logo / icon
+                  Container(
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(30),
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF00E5FF), Color(0xFFBB86FC)],
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF00E5FF)
-                              .withValues(alpha: glowIntensity),
-                          blurRadius: 24,
-                          spreadRadius: 2,
+                          color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                          blurRadius: 30,
+                          spreadRadius: 5,
                         ),
                       ],
                     ),
-                    child: child,
-                  );
-                },
-                child: ElevatedButton(
-                  onPressed: _startBooking,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 18,
+                    child: const Icon(
+                      Icons.rocket_launch_rounded,
+                      size: 40,
+                      color: Colors.white,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      side: const BorderSide(
-                        color: Color(0xFF00E5FF),
-                        width: 1.5,
-                      ),
-                    ),
-                    elevation: 0,
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.flight_takeoff_rounded, size: 20),
-                      SizedBox(width: 12),
-                      Text(
-                        'RÉSERVER VOTRE BILLET',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 2,
-                        ),
+                  const SizedBox(height: 32),
+
+                  // Title
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFF00E5FF), Color(0xFF64FFDA)],
+                    ).createShader(bounds),
+                    child: const Text(
+                      'STELLAR LINES',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 8,
+                        color: Colors.white,
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'INTERPLANETARY TRAVEL',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w300,
+                      letterSpacing: 6,
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+
+                  // Tagline
+                  Text(
+                    'Explore the boundaries of the solar system.\nBook your flight to the stars.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      height: 1.6,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 56),
+
+                  // CTA Button — animated glow
+                  AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      final glowIntensity =
+                          0.2 + (_pulseController.value * 0.3);
+                      return Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(30),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF00E5FF)
+                                  .withValues(alpha: glowIntensity),
+                              blurRadius: 24,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: child,
+                      );
+                    },
+                    child: ElevatedButton(
+                      onPressed: _startBooking,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 18,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          side: const BorderSide(
+                            color: Color(0xFF00E5FF),
+                            width: 1.5,
+                          ),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.flight_takeoff_rounded, size: 20),
+                          SizedBox(width: 12),
+                          Text(
+                            'BOOK YOUR TICKET',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 64),
+
+                  // Destinations preview
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _DestinationChip(name: 'Mars', icon: '🔴'),
+                      const SizedBox(width: 12),
+                      _DestinationChip(name: 'Luna', icon: '🌙'),
+                      const SizedBox(width: 12),
+                      _DestinationChip(name: 'Europa', icon: '🪐'),
+                      const SizedBox(width: 12),
+                      _DestinationChip(name: 'Titan', icon: '⭐'),
                     ],
                   ),
-                ),
-              ),
-
-              const SizedBox(height: 64),
-
-              // Destinations preview
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _DestinationChip(name: 'Mars', icon: '🔴'),
-                  const SizedBox(width: 12),
-                  _DestinationChip(name: 'Luna', icon: '🌙'),
-                  const SizedBox(width: 12),
-                  _DestinationChip(name: 'Europa', icon: '🪐'),
-                  const SizedBox(width: 12),
-                  _DestinationChip(name: 'Titan', icon: '⭐'),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -438,7 +489,7 @@ class _BookingScreenState extends State<BookingScreen>
               OutlinedButton.icon(
                 onPressed: _startBooking,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Réessayer'),
+                label: const Text('Retry'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF00E5FF),
                   side: const BorderSide(color: Color(0xFF00E5FF)),
@@ -466,7 +517,7 @@ class _BookingScreenState extends State<BookingScreen>
             ),
             const SizedBox(height: 24),
             Text(
-              'Recherche des destinations...',
+              'Searching destinations...',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 14,

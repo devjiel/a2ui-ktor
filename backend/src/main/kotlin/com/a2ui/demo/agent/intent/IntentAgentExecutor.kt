@@ -49,10 +49,12 @@ class IntentAgentExecutor(
         val clientDataModel = extractClientDataModel(context)
         val eventInfo = detectA2UIAction(userMessage)
 
+        val lang = extractLanguage(userMessage, clientDataModel)
+
         if (eventInfo != null) {
-            handleContinuation(eventInfo, clientDataModel, userMessage, context, eventProcessor)
+            handleContinuation(eventInfo, clientDataModel, lang, userMessage, context, eventProcessor)
         } else {
-            handleInitialMessage(userMessage, clientDataModel, context, eventProcessor)
+            handleInitialMessage(userMessage, clientDataModel, lang, context, eventProcessor)
         }
     }
 
@@ -61,13 +63,14 @@ class IntentAgentExecutor(
     private suspend fun handleContinuation(
         eventInfo: A2UIActionInfo,
         clientDataModel: JsonObject?,
+        lang: String,
         userMessage: Message,
         context: RequestContext<MessageSendParams>,
         eventProcessor: SessionEventProcessor,
     ) {
         sendStatusUpdate(
             context, eventProcessor,
-            "Traitement de l'action '${eventInfo.name}'...",
+            "Processing action '${eventInfo.name}'...",
             TaskState.Working, final = false,
         )
         val prompt = continuationPrompt(
@@ -76,25 +79,28 @@ class IntentAgentExecutor(
             dataModel = clientDataModel?.toString().orEmpty(),
             userText = extractUserText(userMessage),
         )
-        forwardToGenerator(prompt, context, eventProcessor)
+        forwardToGenerator(prompt, lang, context, eventProcessor)
     }
 
     private suspend fun handleInitialMessage(
         userMessage: Message,
         clientDataModel: JsonObject?,
+        lang: String,
         context: RequestContext<MessageSendParams>,
         eventProcessor: SessionEventProcessor,
     ) {
         sendStatusUpdate(
             context, eventProcessor,
-            "Analyse de l'intention...",
+            "Analyzing intent...",
             TaskState.Working, final = false,
         )
+
+        val cleanText = stripLangTag(extractUserText(userMessage))
 
         val result = promptExecutor.executeStructured<IntentResult>(
             prompt = prompt("intent-analysis") {
                 system(INTENT_AGENT_SYSTEM_PROMPT)
-                user(extractUserText(userMessage))
+                user(cleanText)
             },
             model = model,
             examples = INTENT_EXAMPLES,
@@ -104,7 +110,7 @@ class IntentAgentExecutor(
         val intentResult = result.getOrElse { error ->
             sendStatusUpdate(
                 context, eventProcessor,
-                "Erreur lors de l'analyse: ${error.message}",
+                "Intent analysis error: ${error.message}",
                 TaskState.Failed, final = true,
             )
             return
@@ -114,7 +120,7 @@ class IntentAgentExecutor(
             intentJson = Json.encodeToString(intentResult.data),
             dataModel = clientDataModel?.toString().orEmpty(),
         )
-        forwardToGenerator(prompt, context, eventProcessor)
+        forwardToGenerator(prompt, lang, context, eventProcessor)
     }
 
     // ── A2UI action detection ───────────────────────────────────────
@@ -220,6 +226,35 @@ class IntentAgentExecutor(
         context.params.metadata?.get("a2uiClientDataModel") as? JsonObject
             ?: context.params.message.metadata?.get("a2uiClientDataModel") as? JsonObject
 
+    // ── Language extraction ─────────────────────────────────────────
+
+    /**
+     * Extracts the user's preferred language code.
+     *
+     * Priority:
+     * 1. clientDataModel["lang"] — used on continuations (GeneratorAgent stores "lang" in updateDataModel)
+     * 2. [LANG:xx] tag in message text — used on initial messages (frontend injects it)
+     * 3. Fallback: "en"
+     */
+    private fun extractLanguage(message: Message, clientDataModel: JsonObject?): String {
+        // 1. From data model (continuations)
+        clientDataModel?.get("lang")?.jsonPrimitive?.contentOrNull?.let { return it }
+
+        // 2. From message text (initial messages)
+        val text = extractUserText(message)
+        val match = Regex("""\[LANG:([a-zA-Z-]+)]""").find(text)
+        if (match != null) return match.groupValues[1]
+
+        // 3. Fallback
+        return "en"
+    }
+
+    /**
+     * Strips the [LANG:xx] tag from message text so the LLM doesn't see it.
+     */
+    private fun stripLangTag(text: String): String =
+        text.replace(Regex("""\[LANG:[a-zA-Z-]+]\n?"""), "").trim()
+
     // ── Generator forwarding ────────────────────────────────────────
 
     /**
@@ -227,12 +262,13 @@ class IntentAgentExecutor(
      */
     private suspend fun forwardToGenerator(
         prompt: String,
+        lang: String,
         context: RequestContext<MessageSendParams>,
         eventProcessor: SessionEventProcessor,
     ) {
         sendStatusUpdate(
             context, eventProcessor,
-            "Génération de l'interface A2UI en cours...",
+            "Generating A2UI interface...",
             TaskState.Working, final = false,
         )
 
@@ -241,16 +277,16 @@ class IntentAgentExecutor(
             val client = A2AClient(transport, UrlAgentCardResolver(baseUrl = generatorBaseUrl))
             client.connect()
 
-            client.sendMessageStreaming(buildGeneratorRequest(prompt)).collect { response ->
+            client.sendMessageStreaming(buildGeneratorRequest(prompt, lang)).collect { response ->
                 (response.data as? TaskStatusUpdateEvent)?.let {
                     forwardEvent(it, context, eventProcessor)
                 }
             }
         } catch (e: Exception) {
-            logger.error("Erreur appel GeneratorAgent", e)
+            logger.error("GeneratorAgent call error", e)
             sendStatusUpdate(
                 context, eventProcessor,
-                "Erreur lors de l'appel au GeneratorAgent: ${e.message}",
+                "GeneratorAgent call error: ${e.message}",
                 TaskState.Failed, final = true,
             )
         } finally {
@@ -268,7 +304,7 @@ class IntentAgentExecutor(
     ) {
         if (event.final) {
             val parts = event.status.message?.parts?.toList()
-                ?: listOf(TextPart("Erreur: réponse vide du GeneratorAgent"))
+                ?: listOf(TextPart("Error: empty response from GeneratorAgent"))
             sendStatusUpdateWithParts(context, eventProcessor, parts, TaskState.Completed, final = true)
         } else {
             event.status.message?.parts
@@ -281,13 +317,14 @@ class IntentAgentExecutor(
         }
     }
 
-    private fun buildGeneratorRequest(prompt: String): Request<MessageSendParams> {
+    private fun buildGeneratorRequest(prompt: String, lang: String): Request<MessageSendParams> {
         val message = Message(
             messageId = Uuid.random().toString(),
             role = Role.User,
             parts = listOf(TextPart(prompt)),
         )
-        return Request(data = MessageSendParams(message = message))
+        val metadata = buildJsonObject { put("lang", lang) }
+        return Request(data = MessageSendParams(message = message, metadata = metadata))
     }
 
     private fun extractUserText(message: Message): String =

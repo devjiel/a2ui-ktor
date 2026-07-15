@@ -42,3 +42,8 @@
 **JSON FORMAT:**
 - "version" MUST be "v0.9" in every message.
 - "children" is either an array of strings (component IDs) OR an object {"componentId": "...", "path": "/..."}.
+
+**LANGUAGE COMPLIANCE:**
+- All user-facing text (labels, placeholders, button text, titles, descriptions) must be in the language specified in the RESPONSE LANGUAGE section of the system prompt.
+- Internal identifiers (component IDs, event names, JSON keys, component types) must remain in English.
+- The updateDataModel value object must ALWAYS include a "lang" key with the active language code, plus ALL data fields needed by the current surface.

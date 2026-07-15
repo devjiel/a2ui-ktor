@@ -25,19 +25,20 @@ object MockFlightRepository {
 
     // ── Destinations ──
     val DESTINATIONS = listOf(
-        Destination("EARTH", "Terre — Spaceport International", "Spaceport", 0.0, "-",
-            "Point de départ principal. Spaceport situé en orbite basse terrestre."),
-        Destination("LUNA", "Station Lunaire Alpha", "Station orbitale", 0.0026, "3 jours",
-            "Station en orbite lunaire. Gravité 0.16g. Vue imprenable sur la Terre."),
-        Destination("MARS", "Mars Colony One", "Colonie", 0.52, "45 jours",
-            "Première colonie permanente sur Mars. Dôme pressurisé, 12 000 habitants."),
-        Destination("EURO", "Europa Research Base", "Base scientifique", 4.2, "6 mois",
-            "Base de recherche sous la glace d'Europa. Océan souterrain accessible."),
-        Destination("TITAN", "Titan Outpost", "Avant-poste", 8.5, "1 an",
-            "Avant-poste sur Titan, lune de Saturne. Lacs de méthane, atmosphère dense."),
-        Destination("PROX", "Proxima Station", "Station interstellaire", 268000.0, "4.2 années",
-            "Première station interstellaire. Voyage en cryo-sommeil obligatoire."),
+        Destination("EARTH", "Earth — Spaceport International", "Spaceport", 0.0, "-",
+            "Main departure point. Spaceport located in low Earth orbit."),
+        Destination("LUNA", "Lunar Station Alpha", "Orbital station", 0.0026, "3 days",
+            "Station in lunar orbit. Gravity 0.16g. Breathtaking view of the Earth."),
+        Destination("MARS", "Mars Colony One", "Colony", 0.52, "45 days",
+            "First permanent colony on Mars. Pressurized dome, 12,000 inhabitants."),
+        Destination("EURO", "Europa Research Base", "Scientific base", 4.2, "6 months",
+            "Research base under the ice of Europa. Accessible subsurface ocean."),
+        Destination("TITAN", "Titan Outpost", "Outpost", 8.5, "1 year",
+            "Outpost on Titan, Saturn's moon. Methane lakes, dense atmosphere."),
+        Destination("PROX", "Proxima Station", "Interstellar station", 268000.0, "4.2 years",
+            "First interstellar station. Cryo-sleep voyage mandatory."),
     )
+
 
     // ── Prix de base par distance (crédits galactiques) ──
     private fun basePrice(distanceAU: Double): Int = when {
