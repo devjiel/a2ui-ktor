@@ -263,40 +263,52 @@ fun buildGeneratorSystemPrompt(
     rules: String,
     examples: String,
     lang: String,
-): String {
-    val langName = languageDisplayName(lang)
-    val langSection = buildString {
-        appendLine("## RESPONSE LANGUAGE")
-        appendLine()
-        appendLine("The user's preferred language is: $langName (code: $lang)")
-        appendLine()
-        appendLine("**Critical language rules:**")
-        appendLine("- ALL user-facing text in the generated A2UI interface MUST be written in $langName.")
-        appendLine("  This includes: labels, placeholders, button text, titles, descriptions, helper text,")
-        appendLine("  error messages, and any other text visible to the user.")
-        appendLine("- Internal identifiers (component IDs, event names, JSON keys, component types, action names)")
-        appendLine("  MUST remain in English. Only the DISPLAY text changes.")
-        if (lang == "ar") {
-            appendLine("- Arabic text is naturally RTL. No special A2UI layout changes are needed,")
-            appendLine("  but prefer right-aligned text for descriptions and labels when appropriate.")
-        }
-        if (lang == "zh") {
-            appendLine("- Use Simplified Chinese (简体中文) for all user-facing text.")
-        }
-        appendLine("- ALWAYS include a \"lang\" key with the value \"$lang\" at the ROOT of your updateDataModel")
-        appendLine("  value object. This ensures the language preference persists across stateless interactions.")
-        appendLine("- When generating updateDataModel, include ALL data fields needed by the current surface")
-        appendLine("  (not just \"lang\"). The client may REPLACE its entire local data model with the value object")
-        appendLine("  you send, so EVERY field must be present. For example, if the surface has form fields for")
-        appendLine("  origin, destination, and date, your updateDataModel value MUST include all of them plus \"lang\".")
-        appendLine("- After validate_a2ui passes, SELF-CRITIQUE: verify ALL user-facing text is in $langName.")
-        appendLine("  If any label, placeholder, or button text is in the wrong language, fix it and re-validate.")
-    }
-    return A2UI_GENERATOR_SYSTEM_PROMPT_TEMPLATE
-        .replace("{{LANG_SECTION}}", langSection)
+): String =
+    A2UI_GENERATOR_SYSTEM_PROMPT_TEMPLATE
+        .replace("{{LANG_SECTION}}", languageSection(lang))
         .replace("{{SPEC_SUMMARY}}", specSummary)
         .replace("{{CATALOG}}", catalog)
         .replace("{{RULES}}", rules)
         .replace("{{EXAMPLES}}", examples)
         .trimIndent()
+
+/** Language-specific instructions injected into the generator system prompt. */
+private fun languageSection(lang: String): String {
+    val langName = languageDisplayName(lang)
+
+    return listOfNotNull(
+        """
+        ## RESPONSE LANGUAGE
+
+        The user's preferred language is: $langName (code: $lang)
+
+        **Critical language rules:**
+        - ALL user-facing text in the generated A2UI interface MUST be written in $langName.
+          This includes: labels, placeholders, button text, titles, descriptions, helper text,
+          error messages, and any other text visible to the user.
+        - Internal identifiers (component IDs, event names, JSON keys, component types, action names)
+          MUST remain in English. Only the DISPLAY text changes.
+        """.trimIndent(),
+        languageSpecificRules(lang),
+        """
+        - ALWAYS include a "lang" key with the value "$lang" at the ROOT of your updateDataModel
+          value object. This ensures the language preference persists across stateless interactions.
+        - When generating updateDataModel, include ALL data fields needed by the current surface
+          (not just "lang"). The client may REPLACE its entire local data model with the value object
+          you send, so EVERY field must be present. For example, if the surface has form fields for
+          origin, destination, and date, your updateDataModel value MUST include all of them plus "lang".
+        - After validate_a2ui passes, SELF-CRITIQUE: verify ALL user-facing text is in $langName.
+          If any label, placeholder, or button text is in the wrong language, fix it and re-validate.
+        """.trimIndent(),
+    ).joinToString("\n")
+}
+
+/** Extra prompt rules that apply only to certain languages. */
+private fun languageSpecificRules(lang: String): String? = when (lang) {
+    "ar" -> """
+        - Arabic text is naturally RTL. No special A2UI layout changes are needed,
+          but prefer right-aligned text for descriptions and labels when appropriate.
+    """.trimIndent()
+    "zh" -> "- Use Simplified Chinese (简体中文) for all user-facing text."
+    else -> null
 }
